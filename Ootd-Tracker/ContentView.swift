@@ -12,7 +12,9 @@ import UIKit
 struct ContentView: View {
     @State private var selectedDate: Date?
     @State private var photos: [String: Data] = [:]
+    @State private var showActionSheet = false
     @State private var showPhotoPicker = false
+    @State private var showCamera = false
     @State private var selectedImageData: Data?
 
     let calendar = Calendar.current
@@ -43,7 +45,7 @@ struct ContentView: View {
                     .onTapGesture {
                         selectedDate = date
                         if photos[date.ISO8601Format()] == nil {
-                            showPhotoPicker = true
+                            showActionSheet = true
                         }
                     }
                 }
@@ -61,7 +63,7 @@ struct ContentView: View {
                     .animation(.easeInOut, value: selectedDate)
 
                 Button("Upload New Photo") {
-                    showPhotoPicker = true
+                    showActionSheet = true
                 }
                 .foregroundColor(.blue)
                 .padding(.horizontal)
@@ -71,8 +73,22 @@ struct ContentView: View {
         .onAppear {
             loadPhotos()
         }
+        .confirmationDialog("Add Photo", isPresented: $showActionSheet, titleVisibility: .visible) {
+            if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                Button("Take Photo") {
+                    showCamera = true
+                }
+            }
+            Button("Choose from Library") {
+                showPhotoPicker = true
+            }
+            Button("Cancel", role: .cancel) {}
+        }
         .sheet(isPresented: $showPhotoPicker) {
             PhotoPicker(selectedImageData: $selectedImageData)
+        }
+        .sheet(isPresented: $showCamera) {
+            CameraPicker(selectedImageData: $selectedImageData)
         }
         .onChange(of: selectedImageData) { newData in
             if let data = newData, let selectedDate = selectedDate {
@@ -96,6 +112,8 @@ struct ContentView: View {
         }
     }
 }
+
+// MARK: - Photo Library Picker
 
 struct PhotoPicker: UIViewControllerRepresentable {
     @Binding var selectedImageData: Data?
@@ -134,6 +152,48 @@ struct PhotoPicker: UIViewControllerRepresentable {
                     }
                 }
             }
+        }
+    }
+}
+
+// MARK: - Camera Picker
+
+struct CameraPicker: UIViewControllerRepresentable {
+    @Binding var selectedImageData: Data?
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: CameraPicker
+
+        init(_ parent: CameraPicker) {
+            self.parent = parent
+        }
+
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            picker.dismiss(animated: true)
+            if let uiImage = info[.originalImage] as? UIImage,
+               let data = uiImage.jpegData(compressionQuality: 1.0) {
+                DispatchQueue.main.async {
+                    self.parent.selectedImageData = data
+                }
+            }
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            picker.dismiss(animated: true)
         }
     }
 }
